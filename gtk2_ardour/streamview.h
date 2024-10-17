@@ -22,8 +22,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_streamview_h__
-#define __ardour_streamview_h__
+#pragma once
 
 #include <list>
 #include <cmath>
@@ -31,7 +30,10 @@
 #include "pbd/signals.h"
 
 #include "ardour/location.h"
+
 #include "enums.h"
+#include "selectable.h"
+#include "view_background.h"
 
 namespace Gdk {
 	class Color;
@@ -57,14 +59,13 @@ struct RecBoxInfo {
 	ARDOUR::samplecnt_t      length;
 };
 
-class Selectable;
 class RouteTimeAxisView;
 class RegionView;
 class RegionSelection;
 class CrossfadeView;
 class Selection;
 
-class StreamView : public sigc::trackable, public PBD::ScopedConnectionList
+class StreamView : public sigc::trackable, public PBD::ScopedConnectionList, public virtual ViewBackground, public SelectableOwner
 {
 public:
 	virtual ~StreamView ();
@@ -104,7 +105,7 @@ public:
 	void         foreach_selected_regionview (sigc::slot<void,RegionView*> slot);
 
 	void set_selected_regionviews (RegionSelection&);
-	void get_selectables (Temporal::timepos_t const &, Temporal::timepos_t const &, double, double, std::list<Selectable* >&, bool within = false);
+	void _get_selectables (Temporal::timepos_t const &, Temporal::timepos_t const &, double, double, std::list<Selectable* >&, bool within);
 	void get_inverted_selectables (Selection&, std::list<Selectable* >& results);
 	void get_regionviews_at_or_after (Temporal::timepos_t const &, RegionSelection&);
 
@@ -196,5 +197,4 @@ protected:
 	void setup_new_rec_layer_time (std::shared_ptr<ARDOUR::Region>);
 };
 
-#endif /* __ardour_streamview_h__ */
 

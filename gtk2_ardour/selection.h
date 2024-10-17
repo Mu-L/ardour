@@ -22,8 +22,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_gtk_selection_h__
-#define __ardour_gtk_selection_h__
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -50,9 +49,9 @@
 class TimeAxisView;
 class RegionView;
 class Selectable;
-class PublicEditor;
+class EditingContext;
 class MidiRegionView;
-class AutomationLine;
+class EditorAutomationLine;
 class ControlPoint;
 
 
@@ -97,7 +96,7 @@ public:
 	 */
 	MidiRegionSelection midi_regions();
 
-	Selection (PublicEditor const * e, bool manage_libardour_selection);
+	Selection (EditingContext const * e, bool manage_libardour_selection);
 
 	// Selection& operator= (const Selection& other);
 
@@ -245,11 +244,10 @@ public:
 	void core_selection_changed (PBD::PropertyChange const & pc);
 
 private:
-	PublicEditor const * editor;
+	EditingContext const * editor;
 	uint32_t next_time_id;
 	bool     manage_libardour_selection;
 };
 
 bool operator==(const Selection& a, const Selection& b);
 
-#endif /* __ardour_gtk_selection_h__ */

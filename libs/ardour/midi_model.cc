@@ -32,6 +32,7 @@
 #include "pbd/compose.h"
 #include "pbd/enumwriter.h"
 #include "pbd/error.h"
+#include "pbd/history_owner.h"
 
 #include "evoral/Control.h"
 
@@ -66,6 +67,14 @@ MidiModel::MidiModel (MidiSource& s)
 	_midi_source.AutomationStateChanged.connect_same_thread (_midi_source_connections, boost::bind (&MidiModel::source_automation_state_changed, this, _1, _2));
 }
 
+MidiModel::MidiModel (MidiModel const & other, MidiSource & s)
+	: AutomatableSequence<TimeType> (other)
+	, _midi_source (s)
+{
+	_midi_source.InterpolationChanged.connect_same_thread (_midi_source_connections, boost::bind (&MidiModel::source_interpolation_changed, this, _1, _2));
+	_midi_source.AutomationStateChanged.connect_same_thread (_midi_source_connections, boost::bind (&MidiModel::source_automation_state_changed, this, _1, _2));
+}
+
 MidiModel::NoteDiffCommand*
 MidiModel::new_note_diff_command (const string& name)
 {
@@ -92,24 +101,24 @@ MidiModel::new_patch_change_diff_command (const string& name)
 
 
 void
-MidiModel::apply_diff_command_as_commit(Session& session, Command* cmd)
+MidiModel::apply_diff_command_as_commit(HistoryOwner& history, Command* cmd)
 {
-	session.begin_reversible_command (cmd->name());
+	history.begin_reversible_command (cmd->name());
 	(*cmd)();
-	session.commit_reversible_command (cmd);
+	history.commit_reversible_command (cmd);
 	set_edited (true);
 }
 
 void
-MidiModel::apply_diff_command_as_subcommand(Session& session, Command* cmd)
+MidiModel::apply_diff_command_as_subcommand (HistoryOwner& history, Command* cmd)
 {
 	(*cmd)();
-	session.add_command (cmd);
+	history.add_command (cmd);
 	set_edited (true);
 }
 
 void
-MidiModel::apply_diff_command_only(Session& session, Command* cmd)
+MidiModel::apply_diff_command_only (Command* cmd)
 {
 	(*cmd)();
 	set_edited (true);
@@ -1262,6 +1271,8 @@ MidiModel::sync_to_source (const Source::WriterLock& source_lock)
 {
 	ReadLock lock(read_lock());
 
+	std::cerr << "SYNC " << _midi_source.name() << " from model\n";
+
 	/* Invalidate and store active notes, which will be picked up by the iterator
 	   on the next roll if time progresses linearly. */
 	_midi_source.invalidate(source_lock);
@@ -1422,14 +1433,14 @@ MidiModel::find_sysex (Evoral::event_id_t sysex_id)
 MidiModel::WriteLock
 MidiModel::edit_lock()
 {
-	Source::WriterLock*   source_lock = 0;
+	Source::WriterLock*   source_lock = nullptr;
 
 	/* Take source lock and invalidate iterator to release its lock on model.
 	 * Add currently active notes to _active_notes so we can restore them
 	 * if playback resumes at the same point after the edit.
 	 */
 	source_lock = new Source::WriterLock (_midi_source.mutex());
-	_midi_source.invalidate(*source_lock);
+	_midi_source.invalidate (*source_lock);
 	return WriteLock (new WriteLockImpl (source_lock, _lock, _control_lock));
 }
 
@@ -1863,4 +1874,20 @@ MidiModel::rebuild_from_mapping_stash (Temporal::Beats const & src_pos_offset)
 	apply_diff_command_as_subcommand (_midi_source.session(), pc_cmd);
 
 	tempo_mapping_stash.clear ();
+}
+
+void
+MidiModel::track_state (timepos_t const & when, MidiStateTracker& mst) const
+{
+	for (auto const & ev : *this) {
+		mst.track (ev.buffer());
+	}
+}
+
+void
+MidiModel::render (const ReadLock& lock, Evoral::EventSink<Temporal::Beats>& dst)
+{
+	for (auto const & ev : *this) {
+		dst.write (ev.time(), Evoral::MIDI_EVENT, ev.size(), ev.buffer());
+	}
 }

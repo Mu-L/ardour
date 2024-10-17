@@ -45,7 +45,7 @@
 #include "audio_time_axis.h"
 #include "audio_region_view.h"
 #include "audio_streamview.h"
-#include "automation_line.h"
+#include "editor_automation_line.h"
 #include "control_point.h"
 #include "editor_regions.h"
 #include "editor_cursors.h"
@@ -979,20 +979,6 @@ out:
 }
 
 void
-Editor::set_selected_midi_region_view (MidiRegionView& mrv)
-{
-	/* clear note selection in all currently selected MidiRegionViews */
-
-	if (get_selection().regions.contains (&mrv) && get_selection().regions.size() == 1) {
-		/* Nothing to do */
-		return;
-	}
-
-	midi_action (&MidiRegionView::clear_note_selection);
-	get_selection().set (&mrv);
-}
-
-void
 Editor::set_selection (std::list<Selectable*> s, SelectionOperation op)
 {
 	if (s.empty()) {
@@ -1903,17 +1889,19 @@ Editor::invert_selection ()
  *  within the region are already selected.
  */
 void
-Editor::select_all_within (timepos_t const & start, timepos_t const & end, double top, double bot, const TrackViewList& tracklist, SelectionOperation op, bool preserve_if_selected)
+Editor::select_all_within (timepos_t const & start, timepos_t const & end, double top, double bot, std::list<SelectableOwner*> const & owners, SelectionOperation op, bool preserve_if_selected)
 {
 	list<Selectable*> found;
 
-	for (TrackViewList::const_iterator iter = tracklist.begin(); iter != tracklist.end(); ++iter) {
+	for (auto & owner : owners) {
 
-		if ((*iter)->hidden()) {
+		TimeAxisView* tav = dynamic_cast<TimeAxisView*> (owner);
+
+		if (tav && tav->hidden()) {
 			continue;
 		}
 
-		(*iter)->get_selectables (start, end, top, bot, found);
+		owner->get_selectables (start, end, top, bot, found);
 	}
 
 	if (found.empty()) {
@@ -2488,4 +2476,21 @@ Editor::move_selected_tracks (bool up)
 	if (scroll_to) {
 		ensure_time_axis_view_is_visible (*scroll_to, false);
 	}
+}
+
+RegionSelection
+Editor::region_selection()
+{
+	return get_regions_from_selection_and_entered ();
+}
+
+std::list<SelectableOwner*>
+Editor::selectable_owners()
+{
+	std::list<SelectableOwner*> sl;
+	for (auto & tv : track_views) {
+		sl.push_back (tv);
+	}
+
+	return sl;
 }

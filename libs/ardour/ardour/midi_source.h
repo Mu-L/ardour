@@ -20,8 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_midi_source_h__
-#define __ardour_midi_source_h__
+#pragma once
 
 #include <string>
 #include <time.h>
@@ -109,6 +108,7 @@ class LIBARDOUR_API MidiSource : virtual public Source
 	                             MidiNoteTracker*                   tracker,
 	                             MidiChannelFilter*                 filter,
 	                             const std::set<Evoral::Parameter>& filtered);
+	virtual void render (const ReaderLock& lock, Evoral::EventSink<Temporal::Beats>& dst) = 0;
 
 	/** Write data from a MidiRingBuffer to this source.
 	 * @param lock Reference to the Mutex to lock before modification
@@ -247,4 +247,3 @@ class LIBARDOUR_API MidiSource : virtual public Source
 
 }
 
-#endif /* __ardour_midi_source_h__ */

@@ -21,13 +21,14 @@
 #define __SYSEX_H__
 
 #include "canvas/flag.h"
-#include "midi_region_view.h"
+
+class MidiView;
 
 class SysEx
 {
 public:
 	SysEx (
-		MidiRegionView&             region,
+		MidiView&                   view,
 		ArdourCanvas::Container*    parent,
 		std::string&                text,
 		double                      height,
@@ -51,7 +52,7 @@ private:
 	bool event_handler (GdkEvent* ev);
 	ArdourCanvas::Flag* _flag;
 	ARDOUR::MidiModel::SysExPtr _sysex;
-	MidiRegionView&             _region;
+	MidiView&          _view;
 };
 
 #endif /* __SYSEX_H__ */

@@ -20,8 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_debug_h__
-#define __ardour_debug_h__
+#pragma once
 
 #include <stdint.h>
 
@@ -116,8 +115,8 @@ namespace PBD {
 		LIBARDOUR_API extern DebugBits VSTCallbacks;
 		LIBARDOUR_API extern DebugBits WiimoteControl;
 		LIBARDOUR_API extern DebugBits Freesound;
+		LIBARDOUR_API extern DebugBits ClipRecording;
 
 	}
 }
 
-#endif /* __ardour_debug_h__ */

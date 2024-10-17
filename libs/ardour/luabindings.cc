@@ -22,6 +22,7 @@
 
 #include <glibmm.h>
 
+#include "pbd/history_owner.h"
 #include "pbd/stateful_diff_command.h"
 #include "pbd/openuri.h"
 #include "pbd/progress.h"
@@ -225,6 +226,7 @@ CLASSINFO(ArdourMarker);
 CLASSINFO(AudioRegionView);
 CLASSINFO(AxisView);
 CLASSINFO(MarkerSelection);
+CLASSINFO(EditingContext);
 CLASSINFO(PublicEditor);
 CLASSINFO(RegionSelection);
 CLASSINFO(RegionView);
@@ -295,6 +297,7 @@ CLASSKEYS(Temporal::superclock_t)
 
 CLASSKEYS(PBD::ID);
 CLASSKEYS(PBD::Configuration);
+CLASSKEYS(PBD::HistoryOwner);
 CLASSKEYS(PBD::PropertyChange);
 CLASSKEYS(PBD::StatefulDestructible);
 
@@ -501,6 +504,16 @@ LuaBindings::common (lua_State* L)
 		.endClass ()
 
 		.beginClass <PBD::Progress> ("Progress")
+		.endClass ()
+
+		.beginClass <PBD::HistoryOwner> ("HistoryOwner")
+			.addFunction ("begin_reversible_command", (void (PBD::HistoryOwner::*)(const std::string&))&PBD::HistoryOwner::begin_reversible_command)
+			.addFunction ("commit_reversible_command", &PBD::HistoryOwner::commit_reversible_command)
+			.addFunction ("abort_reversible_command", &PBD::HistoryOwner::abort_reversible_command)
+			.addFunction ("collected_undo_commands", &PBD::HistoryOwner::collected_undo_commands)
+			.addFunction ("abort_empty_reversible_command", &PBD::HistoryOwner::abort_empty_reversible_command)
+			.addFunction ("add_command", &PBD::HistoryOwner::add_command)
+			.addFunction ("add_stateful_diff_command", &PBD::HistoryOwner::add_stateful_diff_command)
 		.endClass ()
 
 		.beginClass <PBD::Stateful> ("Stateful")
@@ -1654,12 +1667,10 @@ LuaBindings::common (lua_State* L)
 		.addFunction ("has_transients", &Region::has_transients)
 		.addFunction ("transients", (AnalysisFeatureList (Region::*)())&Region::transients)
 
-#ifndef NDEBUG // disable region FX for now
 		.addFunction ("load_plugin", &Region::load_plugin)
 		.addFunction ("add_plugin", &Region::add_plugin)
 		.addFunction ("remove_plugin", &Region::add_plugin)
 		.addFunction ("nth_plugin", &Region::nth_plugin)
-#endif
 
 		/* editing operations */
 		.addFunction ("set_length", &Region::set_length)
@@ -1806,8 +1817,8 @@ LuaBindings::common (lua_State* L)
 		.endClass ()
 
 		.deriveWSPtrClass <MidiModel, AutomatableSequence<Temporal::Beats> > ("MidiModel")
-		.addFunction ("apply_command", (void (MidiModel::*)(Session*, PBD::Command*))&MidiModel::apply_diff_command_as_commit) /* deprecated: left here in case any extant scripts use apply_command */
-		.addFunction ("apply_diff_command_as_commit", (void (MidiModel::*)(Session*, PBD::Command*))&MidiModel::apply_diff_command_as_commit)
+		.addFunction ("apply_command", (void (MidiModel::*)(PBD::HistoryOwner*, PBD::Command*))&MidiModel::apply_diff_command_as_commit) /* deprecated: left here in case any extant scripts use apply_command */
+		.addFunction ("apply_diff_command_as_commit", (void (MidiModel::*)(PBD::HistoryOwner*, PBD::Command*))&MidiModel::apply_diff_command_as_commit)
 		.addFunction ("new_note_diff_command", &MidiModel::new_note_diff_command)
 		.addFunction ("new_sysex_diff_command", &MidiModel::new_sysex_diff_command)
 		.addFunction ("new_patch_change_diff_command", &MidiModel::new_patch_change_diff_command)
@@ -3029,7 +3040,7 @@ LuaBindings::common (lua_State* L)
 	// functions which can be used from realtime and non-realtime contexts
 	luabridge::getGlobalNamespace (L)
 		.beginNamespace ("ARDOUR")
-		.beginClass <Session> ("Session")
+		.deriveClass <Session, PBD::HistoryOwner> ("Session")
 		.addFunction ("scripts_changed", &Session::scripts_changed) // used internally
 		.addFunction ("engine_speed", &Session::engine_speed)
 		.addFunction ("actual_speed", &Session::actual_speed)
@@ -3115,13 +3126,6 @@ LuaBindings::common (lua_State* L)
 		.addFunction ("set_controls", &Session::set_controls)
 		.addFunction ("set_control", &Session::set_control)
 		.addFunction ("set_exclusive_input_active", &Session::set_exclusive_input_active)
-		.addFunction ("begin_reversible_command", (void (Session::*)(const std::string&))&Session::begin_reversible_command)
-		.addFunction ("commit_reversible_command", &Session::commit_reversible_command)
-		.addFunction ("abort_reversible_command", &Session::abort_reversible_command)
-		.addFunction ("collected_undo_commands", &Session::collected_undo_commands)
-		.addFunction ("abort_empty_reversible_command", &Session::abort_empty_reversible_command)
-		.addFunction ("add_command", &Session::add_command)
-		.addFunction ("add_stateful_diff_command", &Session::add_stateful_diff_command)
 		.addFunction ("playlists", &Session::playlists)
 		.addFunction ("engine", (AudioEngine& (Session::*)())&Session::engine)
 		.addFunction ("get_block_size", &Session::get_block_size)
@@ -3158,9 +3162,9 @@ LuaBindings::common (lua_State* L)
 		.beginNamespace ("Session")
 
 		.beginNamespace ("RecordState")
-		.addConst ("Disabled", ARDOUR::Session::RecordState(Session::Disabled))
-		.addConst ("Enabled", ARDOUR::Session::RecordState(Session::Enabled))
-		.addConst ("Recording", ARDOUR::Session::RecordState(Session::Recording))
+		.addConst ("Disabled", ARDOUR::RecordState(ARDOUR::Disabled))
+		.addConst ("Enabled", ARDOUR::RecordState(ARDOUR::Enabled))
+		.addConst ("Recording", ARDOUR::RecordState(ARDOUR::Recording))
 		.endNamespace ()
 
 		.endNamespace () // end Session enums

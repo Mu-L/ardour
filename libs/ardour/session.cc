@@ -195,7 +195,8 @@ Session::Session (AudioEngine &eng,
                   string mix_template,
                   bool unnamed,
                   samplecnt_t sr)
-	: _playlists (new SessionPlaylists)
+	: HistoryOwner (X_("editor"))
+	,  _playlists (new SessionPlaylists)
 	, _engine (eng)
 	, process_function (&Session::process_with_events)
 	, _bounce_processing_active (false)
@@ -320,7 +321,6 @@ Session::Session (AudioEngine &eng,
 	, no_questions_about_missing_files (false)
 	, _bundles (new BundleList)
 	, _bundle_xml_node (0)
-	, _current_trans (0)
 	, _clicking (false)
 	, _click_rec_only (false)
 	, click_data (0)
@@ -817,6 +817,7 @@ Session::destroy ()
 		for (RouteList::iterator i = r->begin(); i != r->end(); ++i) {
 			DEBUG_TRACE(DEBUG::Destruction, string_compose ("Dropping for route %1 ; pre-ref = %2\n", (*i)->name(), (*i).use_count()));
 			(*i)->drop_references ();
+			DEBUG_TRACE(DEBUG::Destruction, string_compose ("post pre-ref = %2\n", (*i)->name(), (*i).use_count()));
 		}
 
 		r->clear ();
@@ -7513,12 +7514,6 @@ std::shared_ptr<PBD::Controllable>
 Session::recently_touched_controllable () const
 {
 	return _recently_touched_controllable.lock ();
-}
-
-bool
-Session::operation_in_progress (GQuark op) const
-{
-	return (find (_current_trans_quarks.begin(), _current_trans_quarks.end(), op) != _current_trans_quarks.end());
 }
 
 void

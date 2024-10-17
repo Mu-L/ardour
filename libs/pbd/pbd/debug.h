@@ -19,8 +19,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __libpbd_debug_h__
-#define __libpbd_debug_h__
+#pragma once
 
 #include <bitset>
 #include <stdint.h>
@@ -39,7 +38,7 @@
 
 namespace PBD {
 
-	typedef std::bitset<192> DebugBits;
+	typedef std::bitset<256> DebugBits;
 
 	LIBPBD_API extern DebugBits debug_bits;
 	LIBPBD_API DebugBits new_debug_bit (const char* name);
@@ -117,5 +116,4 @@ namespace PBD {
 #define DEBUG_RESULT_CAST(type,var,cast_expr,...) __VA_ARGS__
 #define DEBUG_ASSIGN(var,expr)
 #endif
-#endif /* __libpbd_debug_h__ */
 

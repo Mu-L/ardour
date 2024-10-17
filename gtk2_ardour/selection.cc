@@ -37,6 +37,7 @@
 #include "control_protocol/control_protocol.h"
 
 #include "audio_region_view.h"
+#include "automation_line.h"
 #include "debug.h"
 #include "gui_thread.h"
 #include "midi_cut_buffer.h"
@@ -63,7 +64,7 @@ struct TimelineRangeComparator {
 	}
 };
 
-Selection::Selection (const PublicEditor* e, bool mls)
+Selection::Selection (const EditingContext* e, bool mls)
 	: editor (e)
 	, next_time_id (0)
 	, manage_libardour_selection (mls)
@@ -539,7 +540,7 @@ Selection::add (std::shared_ptr<Evoral::ControlList> cl)
 	}
 
 	/* The original may change so we must store a copy (not a pointer) here.
-	 * e.g AutomationLine rewrites the list with gain mapping.
+	 * e.g EditorAutomationLine rewrites the list with gain mapping.
 	 * the downside is that we can't perform duplicate checks.
 	 * This code was changed in response to #6842
 	 */
@@ -1163,25 +1164,27 @@ Selection::get_state () const
 		}
 	}
 
-	for (PointSelection::const_iterator i = points.begin(); i != points.end(); ++i) {
-		AutomationTimeAxisView* atv = dynamic_cast<AutomationTimeAxisView*> (&(*i)->line().trackview);
+	for (auto & cp : points) {
+		EditorAutomationLine* al = dynamic_cast<EditorAutomationLine*> (&cp->line());
+		assert (al);
+		AutomationTimeAxisView* atv = dynamic_cast<AutomationTimeAxisView*> (&al->trackview);
 		if (atv) {
 
 			XMLNode* r = node->add_child (X_("ControlPoint"));
 			r->set_property (X_("type"), "track");
 			r->set_property (X_("route-id"), atv->parent_stripable()->id ());
-			r->set_property (X_("automation-list-id"), (*i)->line().the_list()->id ());
-			r->set_property (X_("parameter"), EventTypeMap::instance().to_symbol ((*i)->line().the_list()->parameter ()));
-			r->set_property (X_("view-index"), (*i)->view_index());
-			continue;
-		}
+			r->set_property (X_("automation-list-id"), al->the_list()->id ());
+			r->set_property (X_("parameter"), EventTypeMap::instance().to_symbol (al->the_list()->parameter ()));
+			r->set_property (X_("view-index"), cp->view_index());
+		} else {
 
-		RegionFxLine* fxl = dynamic_cast<RegionFxLine*> (&(*i)->line());
-		if (fxl) {
-			XMLNode* r = node->add_child (X_("ControlPoint"));
-			r->set_property (X_("type"), "region");
-			r->set_property (X_("region-id"), fxl->region_view ().region ()->id ());
-			r->set_property (X_("view-index"), (*i)->view_index());
+			RegionFxLine* fxl = dynamic_cast<RegionFxLine*> (al);
+			if (fxl) {
+				XMLNode* r = node->add_child (X_("ControlPoint"));
+				r->set_property (X_("type"), "region");
+				r->set_property (X_("region-id"), fxl->region_view ().region ()->id ());
+				r->set_property (X_("view-index"), cp->view_index());
+			}
 		}
 
 	}
@@ -1622,8 +1625,8 @@ Selection::midi_regions ()
 {
 	MidiRegionSelection ms;
 
-	for (RegionSelection::iterator i = regions.begin(); i != regions.end(); ++i) {
-		MidiRegionView* mrv = dynamic_cast<MidiRegionView*>(*i);
+	for (auto & r : regions) {
+		MidiRegionView* mrv = dynamic_cast<MidiRegionView*>(r);
 		if (mrv) {
 			ms.add (mrv);
 		}

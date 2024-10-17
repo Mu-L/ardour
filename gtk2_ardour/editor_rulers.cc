@@ -466,7 +466,6 @@ Editor::update_ruler_visibility ()
 	 */
 
 	double tbpos = 0.0;
-	double tbgpos = 0.0;
 	double old_unit_pos;
 
 #ifdef __APPLE__
@@ -488,7 +487,7 @@ Editor::update_ruler_visibility ()
 		minsec_ruler->show();
 		minsec_label.show();
 		tbpos += timebar_height;
-		tbgpos += timebar_height;
+
 		visible_timebars++;
 		have_timebar = true;
 	} else {
@@ -504,7 +503,6 @@ Editor::update_ruler_visibility ()
 		timecode_ruler->show();
 		timecode_label.show();
 		tbpos += timebar_height;
-		tbgpos += timebar_height;
 		visible_timebars++;
 		have_timebar = true;
 	} else {
@@ -520,7 +518,6 @@ Editor::update_ruler_visibility ()
 		samples_ruler->show();
 		samples_label.show();
 		tbpos += timebar_height;
-		tbgpos += timebar_height;
 		visible_timebars++;
 		have_timebar = true;
 	} else {
@@ -536,7 +533,6 @@ Editor::update_ruler_visibility ()
 		bbt_ruler->show();
 		bbt_label.show();
 		tbpos += timebar_height;
-		tbgpos += timebar_height;
 		visible_timebars++;
 		have_timebar = true;
 	} else {
@@ -552,7 +548,6 @@ Editor::update_ruler_visibility ()
 		tempo_group->show();
 		tempo_label.show();
 		tbpos += timebar_height;
-		tbgpos += timebar_height;
 		visible_timebars++;
 	} else {
 		tempo_group->hide();
@@ -567,7 +562,6 @@ Editor::update_ruler_visibility ()
 		meter_group->show();
 		meter_label.show();
 		tbpos += timebar_height;
-		tbgpos += timebar_height;
 		visible_timebars++;
 	} else {
 		meter_group->hide();
@@ -585,7 +579,6 @@ Editor::update_ruler_visibility ()
 		range_marker_bar->set_outline(false);
 
 		tbpos += timebar_height;
-		tbgpos += timebar_height;
 		visible_timebars++;
 	} else {
 		range_marker_group->hide();
@@ -603,7 +596,6 @@ Editor::update_ruler_visibility ()
 		marker_bar->set_outline(false);
 
 		tbpos += timebar_height;
-		tbgpos += timebar_height;
 		visible_timebars++;
 	} else {
 		marker_group->hide();
@@ -621,7 +613,6 @@ Editor::update_ruler_visibility ()
 		section_marker_bar->set_outline(false);
 
 		tbpos += timebar_height;
-		tbgpos += timebar_height;
 		visible_timebars++;
 		update_marker_display();
 	} else {
@@ -638,7 +629,6 @@ Editor::update_ruler_visibility ()
 		videotl_group->show();
 		videotl_label.show();
 		tbpos += timebar_height * videotl_bar_height;
-		tbgpos += timebar_height * videotl_bar_height;
 		visible_timebars+=videotl_bar_height;
 		queue_visual_videotimeline_update();
 	} else {
@@ -1045,111 +1035,6 @@ Editor::metric_get_timecode (std::vector<ArdourCanvas::Ruler::Mark>& marks, int6
 	}
 }
 
-uint32_t
-Editor::count_bars (Beats const & start, Beats const & end) const
-{
-	TempoMapPoints bar_grid;
-	TempoMap::SharedPtr tmap (TempoMap::use());
-	bar_grid.reserve (4096);
-	superclock_t s (tmap->superclock_at (start));
-	superclock_t e (tmap->superclock_at (end));
-	tmap->get_grid (bar_grid, s, e, 1);
-	return bar_grid.size();
-}
-
-void
-Editor::compute_bbt_ruler_scale (samplepos_t lower, samplepos_t upper)
-{
-	if (_session == 0) {
-		return;
-	}
-
-	Temporal::BBT_Time lower_beat, upper_beat; // the beats at each end of the ruler
-	Temporal::TempoMap::SharedPtr tmap (Temporal::TempoMap::use());
-	Beats floor_lower_beat = std::max (Beats(), tmap->quarters_at_sample (lower)).round_down_to_beat ();
-
-	if (floor_lower_beat < Temporal::Beats()) {
-		floor_lower_beat = Temporal::Beats();
-	}
-
-	const samplepos_t beat_before_lower_pos = tmap->sample_at (floor_lower_beat);
-	const samplepos_t beat_after_upper_pos = tmap->sample_at ((std::max (Beats(), tmap->quarters_at_sample  (upper)).round_down_to_beat()) + Beats (1, 0));
-
-	lower_beat = Temporal::TempoMap::use()->bbt_at (timepos_t (beat_before_lower_pos));
-	upper_beat = Temporal::TempoMap::use()->bbt_at (timepos_t (beat_after_upper_pos));
-	uint32_t beats = 0;
-
-	bbt_bar_helper_on = false;
-	bbt_bars = 0;
-
-	bbt_ruler_scale =  bbt_show_many;
-
-	const Beats ceil_upper_beat = std::max (Beats(), tmap->quarters_at_sample (upper)).round_up_to_beat() + Beats (1, 0);
-
-	if (ceil_upper_beat == floor_lower_beat) {
-		return;
-	}
-
-	bbt_bars = count_bars (floor_lower_beat, ceil_upper_beat);
-
-	double ruler_line_granularity = UIConfiguration::instance().get_ruler_granularity ();  //in pixels
-	ruler_line_granularity = _visible_canvas_width / (ruler_line_granularity*5);  //fudge factor '5' probably related to (4+1 beats)/measure, I think
-
-	beats = (ceil_upper_beat - floor_lower_beat).get_beats();
-	double beat_density = ((beats + 1) * ((double) (upper - lower) / (double) (1 + beat_after_upper_pos - beat_before_lower_pos))) / (float)ruler_line_granularity;
-
-	/* Only show the bar helper if there aren't many bars on the screen */
-	if ((bbt_bars < 2) || (beats < 5)) {
-		bbt_bar_helper_on = true;
-	}
-
-	if (beat_density > 2048) {
-		bbt_ruler_scale = bbt_show_many;
-	} else if (beat_density > 1024) {
-		bbt_ruler_scale = bbt_show_64;
-	} else if (beat_density > 256) {
-		bbt_ruler_scale = bbt_show_16;
-	} else if (beat_density > 64) {
-		bbt_ruler_scale = bbt_show_4;
-	} else if (beat_density > 16) {
-		bbt_ruler_scale = bbt_show_1;
-	} else if (beat_density > 4) {
-		bbt_ruler_scale =  bbt_show_quarters;
-	} else  if (beat_density > 2) {
-		bbt_ruler_scale =  bbt_show_eighths;
-	} else  if (beat_density > 1) {
-		bbt_ruler_scale =  bbt_show_sixteenths;
-	} else  if (beat_density > 0.5) {
-		bbt_ruler_scale =  bbt_show_thirtyseconds;
-	} else  if (beat_density > 0.25) {
-		bbt_ruler_scale =  bbt_show_sixtyfourths;
-	} else {
-		bbt_ruler_scale =  bbt_show_onetwentyeighths;
-	}
-
-	/* Now that we know how fine a grid (Ruler) is allowable on this screen, limit it to the coarseness selected by the user */
-	/* note: GridType and RulerScale are not the same enums, so it's not a simple mathematical operation */
-	int suggested_scale = (int) bbt_ruler_scale;
-	int divs = get_grid_music_divisions(_grid_type, 0);
-	if (_grid_type == GridTypeBar) {
-		suggested_scale = std::min(suggested_scale, (int) bbt_show_1);
-	} else if (_grid_type == GridTypeBeat) {
-		suggested_scale = std::min(suggested_scale, (int) bbt_show_quarters);
-	}  else if ( divs < 4 ) {
-		suggested_scale = std::min(suggested_scale, (int) bbt_show_eighths);
-	}  else if ( divs < 8 ) {
-		suggested_scale = std::min(suggested_scale, (int) bbt_show_sixteenths);
-	} else if ( divs < 16 ) {
-		suggested_scale = std::min(suggested_scale, (int) bbt_show_thirtyseconds);
-	} else if ( divs < 32 ) {
-		suggested_scale = std::min(suggested_scale, (int) bbt_show_sixtyfourths);
-	} else {
-		suggested_scale = std::min(suggested_scale, (int) bbt_show_onetwentyeighths);
-	}
-
-	bbt_ruler_scale = (Editor::BBTRulerScale) suggested_scale;
-}
-
 static void
 edit_last_mark_label (std::vector<ArdourCanvas::Ruler::Mark>& marks, const std::string& newlabel)
 {
@@ -1189,78 +1074,6 @@ Editor::metric_get_bbt (std::vector<ArdourCanvas::Ruler::Mark>& marks, int64_t l
 	if (distance (grid.begin(), grid.end()) == 0) {
 		return;
 	}
-
-	/* we can accent certain lines depending on the user's Grid choice */
-	/* for example, even in a 4/4 meter we can draw a grid with triplet-feel */
-	/* and in this case you will want the accents on '3s' not '2s' */
-	uint32_t bbt_divisor = 2;
-
-	switch (_grid_type) {
-	case GridTypeBeatDiv3:
-		bbt_divisor = 3;
-		break;
-	case GridTypeBeatDiv5:
-		bbt_divisor = 5;
-		break;
-	case GridTypeBeatDiv6:
-		bbt_divisor = 3;
-		break;
-	case GridTypeBeatDiv7:
-		bbt_divisor = 7;
-		break;
-	case GridTypeBeatDiv10:
-		bbt_divisor = 5;
-		break;
-	case GridTypeBeatDiv12:
-		bbt_divisor = 3;
-		break;
-	case GridTypeBeatDiv14:
-		bbt_divisor = 7;
-		break;
-	case GridTypeBeatDiv16:
-		break;
-	case GridTypeBeatDiv20:
-		bbt_divisor = 5;
-		break;
-	case GridTypeBeatDiv24:
-		bbt_divisor = 6;
-		break;
-	case GridTypeBeatDiv28:
-		bbt_divisor = 7;
-		break;
-	case GridTypeBeatDiv32:
-		break;
-	default:
-		bbt_divisor = 2;
-		break;
-	}
-
-	uint32_t bbt_beat_subdivision = 1;
-	switch (bbt_ruler_scale) {
-	case bbt_show_quarters:
-		bbt_beat_subdivision = 1;
-		break;
-	case bbt_show_eighths:
-		bbt_beat_subdivision = 1;
-		break;
-	case bbt_show_sixteenths:
-		bbt_beat_subdivision = 2;
-		break;
-	case bbt_show_thirtyseconds:
-		bbt_beat_subdivision = 4;
-		break;
-	case bbt_show_sixtyfourths:
-		bbt_beat_subdivision = 8;
-		break;
-	case bbt_show_onetwentyeighths:
-		bbt_beat_subdivision = 16;
-		break;
-	default:
-		bbt_beat_subdivision = 1;
-		break;
-	}
-
-	bbt_beat_subdivision *= bbt_divisor;
 
 	switch (bbt_ruler_scale) {
 

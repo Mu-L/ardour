@@ -17,8 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_disk_io_h__
-#define __ardour_disk_io_h__
+#pragma once
 
 #include <vector>
 #include <string>
@@ -162,7 +161,6 @@ protected:
 
 		/* used only by capture */
 		std::shared_ptr<AudioFileSource> write_source;
-		PBD::RingBufferNPT<CaptureTransition>* capture_transition_buf;
 
 		/* used in the butler thread only */
 		samplecnt_t curr_capture_cnt;
@@ -192,4 +190,3 @@ protected:
 
 } // namespace ARDOUR
 
-#endif /* __ardour_disk_io_h__ */

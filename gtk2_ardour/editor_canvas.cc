@@ -45,6 +45,7 @@
 
 #include "ardour_ui.h"
 #include "automation_time_axis.h"
+#include "control_point.h"
 #include "editor.h"
 #include "editing.h"
 #include "rgb_macros.h"
@@ -94,6 +95,8 @@ Editor::initialize_canvas ()
 	*/
 	no_scroll_group = new ArdourCanvas::Container (_track_canvas->root());
 
+	_verbose_cursor = new VerboseCursor (*this);
+
 	ArdourCanvas::ScrollGroup* hsg;
 	ArdourCanvas::ScrollGroup* hg;
 	ArdourCanvas::ScrollGroup* cg;
@@ -112,7 +115,6 @@ Editor::initialize_canvas ()
 	CANVAS_DEBUG_NAME (cursor_scroll_group, "canvas cursor scroll");
 	_track_canvas->add_scroller (*cg);
 
-	_verbose_cursor = new VerboseCursor (this);
 	_region_peak_cursor = new RegionPeakCursor (get_noscroll_group ());
 
 	/*a group to hold global rects like punch/loop indicators */
@@ -228,7 +230,7 @@ Editor::initialize_canvas ()
 	videotl_group->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_videotl_bar_event), videotl_group));
 	range_marker_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), range_marker_bar, RangeMarkerBarItem, "range marker bar"));
 
-	_playhead_cursor = new EditorCursor (*this, &Editor::canvas_playhead_cursor_event, X_("playhead"));
+	_playhead_cursor = new EditorCursor (*this, &EditingContext::canvas_playhead_cursor_event, X_("playhead"));
 	_playhead_cursor->set_sensitive (UIConfiguration::instance().get_sensitize_playhead());
 
 	_snapped_cursor = new EditorCursor (*this, X_("snapped"));
@@ -275,7 +277,7 @@ Editor::initialize_canvas ()
 	_track_canvas->signal_enter_notify_event().connect (sigc::mem_fun(*this, &Editor::entered_track_canvas), false);
 	_track_canvas->set_can_focus ();
 
-	_track_canvas->PreRender.connect (sigc::mem_fun(*this, &Editor::pre_render));
+	_track_canvas->PreRender.connect (sigc::mem_fun(*this, &EditingContext::pre_render));
 
 	/* set up drag-n-drop */
 
@@ -600,18 +602,6 @@ Editor::maybe_autoscroll (bool allow_horiz, bool allow_vert, bool from_headers)
 }
 
 bool
-Editor::drag_active () const
-{
-	return _drags->active();
-}
-
-bool
-Editor::preview_video_drag_active () const
-{
-	return _drags->preview_video ();
-}
-
-bool
 Editor::autoscroll_active () const
 {
 	return autoscroll_connection.connected ();
@@ -893,17 +883,6 @@ Editor::stop_canvas_autoscroll ()
 	autoscroll_cnt = 0;
 }
 
-Editor::EnterContext*
-Editor::get_enter_context(ItemType type)
-{
-	for (ssize_t i = _enter_stack.size() - 1; i >= 0; --i) {
-		if (_enter_stack[i].item_type == type) {
-			return &_enter_stack[i];
-		}
-	}
-	return NULL;
-}
-
 bool
 Editor::left_track_canvas (GdkEventCrossing* ev)
 {
@@ -1016,14 +995,6 @@ Editor::tie_vertical_scrolling ()
 }
 
 void
-Editor::set_horizontal_position (double p)
-{
-	horizontal_adjustment.set_value (p);
-
-	_leftmost_sample = (samplepos_t) floor (p * samples_per_pixel);
-}
-
-void
 Editor::color_handler()
 {
 	Gtkmm2ext::Color base = UIConfiguration::instance().color ("ruler base");
@@ -1088,10 +1059,16 @@ Editor::color_handler()
 */
 }
 
-double
-Editor::horizontal_position () const
+ArdourCanvas::GtkCanvasViewport*
+Editor::get_canvas_viewport() const
 {
-	return sample_to_pixel (_leftmost_sample);
+	return _track_canvas_viewport;
+}
+
+ArdourCanvas::GtkCanvas*
+Editor::get_canvas() const
+{
+	return _track_canvas_viewport->canvas();
 }
 
 bool
@@ -1123,66 +1100,6 @@ Editor::clamp_verbose_cursor_y (double y)
 	y = max (0.0, y);
 	y = min (_visible_canvas_height - 50, y);
 	return y;
-}
-
-ArdourCanvas::GtkCanvasViewport*
-Editor::get_track_canvas() const
-{
-	return _track_canvas_viewport;
-}
-
-Gdk::Cursor*
-Editor::get_canvas_cursor () const
-{
-	/* The top of the cursor stack is always the currently visible cursor. */
-	return _cursor_stack.back();
-}
-
-void
-Editor::set_canvas_cursor (Gdk::Cursor* cursor)
-{
-	Glib::RefPtr<Gdk::Window> win = _track_canvas->get_window();
-
-	if (win && !_cursors->is_invalid (cursor)) {
-		/* glibmm 2.4 doesn't allow null cursor pointer because it uses
-		   a Gdk::Cursor& as the argument to Gdk::Window::set_cursor().
-		   But a null pointer just means "use parent window cursor",
-		   and so should be allowed. Gtkmm 3.x has fixed this API.
-
-		   For now, drop down and use C API
-		*/
-		gdk_window_set_cursor (win->gobj(), cursor ? cursor->gobj() : 0);
-	}
-}
-
-size_t
-Editor::push_canvas_cursor (Gdk::Cursor* cursor)
-{
-	if (!_cursors->is_invalid (cursor)) {
-		_cursor_stack.push_back (cursor);
-		set_canvas_cursor (cursor);
-	}
-	return _cursor_stack.size() - 1;
-}
-
-void
-Editor::pop_canvas_cursor ()
-{
-	while (true) {
-		if (_cursor_stack.size() <= 1) {
-			PBD::error << "attempt to pop default cursor" << endmsg;
-			return;
-		}
-
-		_cursor_stack.pop_back();
-		if (_cursor_stack.back()) {
-			/* Popped to an existing cursor, we're done.  Otherwise, the
-			   context that created this cursor has been destroyed, so we need
-			   to skip to the next down the stack. */
-			set_canvas_cursor (_cursor_stack.back());
-			return;
-		}
-	}
 }
 
 Gdk::Cursor*
@@ -1290,6 +1207,16 @@ Editor::which_track_cursor () const
 	return cursor;
 }
 
+double
+Editor::trackviews_height() const
+{
+	if (!_trackview_group) {
+		return 0;
+	}
+
+	return _visible_canvas_height - _trackview_group->canvas_origin().y;
+}
+
 Gdk::Cursor*
 Editor::which_canvas_cursor(ItemType type) const
 {
@@ -1335,7 +1262,7 @@ Editor::which_canvas_cursor(ItemType type) const
 		case GainLineItem:
 			cursor = _cursors->cross_hair;
 			break;
-		case AutomationLineItem:
+		case EditorAutomationLineItem:
 			cursor = _cursors->cross_hair;
 			break;
 		case StartSelectionTrimItem:
@@ -1460,36 +1387,242 @@ Editor::which_canvas_cursor(ItemType type) const
 	return cursor;
 }
 
-void
-Editor::choose_canvas_cursor_on_entry (ItemType type)
+bool
+Editor::enter_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemType item_type)
 {
-	if (_drags->active()) {
-		return;
+	ControlPoint* cp;
+	ArdourMarker * marker;
+	MeterMarker* m_marker = 0;
+	TempoMarker* t_marker = 0;
+	double fraction;
+	bool ret = true;
+
+	/* by the time we reach here, entered_regionview and entered trackview
+	 * will have already been set as appropriate. Things are done this
+	 * way because this method isn't passed a pointer to a variable type of
+	 * thing that is entered (which may or may not be canvas item).
+	 * (e.g. the actual entered regionview)
+	 */
+
+	choose_canvas_cursor_on_entry (item_type);
+
+	switch (item_type) {
+	case GridZoneItem:
+		break;
+
+	case ControlPointItem:
+		if (mouse_mode == MouseDraw || mouse_mode == MouseObject || mouse_mode == MouseContent) {
+			cp = static_cast<ControlPoint*>(item->get_data ("control_point"));
+			cp->show ();
+
+			fraction = 1.0 - (cp->get_y() / cp->line().height());
+
+			_verbose_cursor->set (cp->line().get_verbose_cursor_string (fraction));
+			_verbose_cursor->show ();
+		}
+		break;
+
+	case GainLineItem:
+		if (mouse_mode == MouseDraw) {
+			ArdourCanvas::Line *line = dynamic_cast<ArdourCanvas::Line *> (item);
+			if (line) {
+				line->set_outline_color (UIConfiguration::instance().color ("entered gain line"));
+			}
+		}
+		break;
+
+	case EditorAutomationLineItem:
+		if (mouse_mode == MouseDraw || mouse_mode == MouseObject) {
+			ArdourCanvas::Line *line = dynamic_cast<ArdourCanvas::Line *> (item);
+			if (line) {
+				line->set_outline_color (UIConfiguration::instance().color ("entered automation line"));
+			}
+		}
+		break;
+
+	case AutomationTrackItem:
+		AutomationTimeAxisView* atv;
+		if ((atv = static_cast<AutomationTimeAxisView*>(item->get_data ("trackview"))) != 0) {
+			clear_entered_track = false;
+			set_entered_track (atv);
+		}
+		break;
+
+	case MarkerItem:
+		if ((marker = static_cast<ArdourMarker *> (item->get_data ("marker"))) == 0) {
+			break;
+		}
+		entered_marker = marker;
+		marker->set_entered (true);
+		break;
+
+	case MeterMarkerItem:
+		if ((m_marker = static_cast<MeterMarker *> (item->get_data ("marker"))) == 0) {
+			break;
+		}
+		entered_marker = m_marker;
+		/* "music" currently serves as a stand-in for "entered". */
+		m_marker->set_color ("meter marker music");
+		break;
+
+	case TempoMarkerItem:
+		if ((t_marker = static_cast<TempoMarker *> (item->get_data ("marker"))) == 0) {
+			break;
+		}
+		entered_marker = t_marker;
+		/* "music" currently serves as a stand-in for "entered". */
+		t_marker->set_color ("tempo marker music");
+		break;
+
+	case FadeInHandleItem:
+	case FadeInTrimHandleItem:
+		if (mouse_mode == MouseObject) {
+			ArdourCanvas::Rectangle *rect = dynamic_cast<ArdourCanvas::Rectangle *> (item);
+			if (rect) {
+				RegionView* rv = static_cast<RegionView*>(item->get_data ("regionview"));
+				rect->set_fill_color (rv->get_fill_color());
+			}
+		}
+		break;
+
+	case FadeOutHandleItem:
+	case FadeOutTrimHandleItem:
+		if (mouse_mode == MouseObject) {
+			ArdourCanvas::Rectangle *rect = dynamic_cast<ArdourCanvas::Rectangle *> (item);
+			if (rect) {
+				RegionView* rv = static_cast<RegionView*>(item->get_data ("regionview"));
+				rect->set_fill_color (rv->get_fill_color ());
+			}
+		}
+		break;
+
+	case FeatureLineItem:
+	{
+		ArdourCanvas::Line *line = dynamic_cast<ArdourCanvas::Line *> (item);
+		line->set_outline_color (0xFF0000FF);
+	}
+	break;
+
+	case SelectionItem:
+		break;
+
+	case WaveItem:
+	{
+		if (entered_regionview) {
+			entered_regionview->entered();
+		}
+	}
+	break;
+
+	default:
+		break;
 	}
 
-	Gdk::Cursor* cursor = which_canvas_cursor(type);
+	/* third pass to handle entered track status in a comprehensible way.
+	 */
 
-	if (!_cursors->is_invalid (cursor)) {
-		// Push a new enter context
-		const EnterContext ctx = { type, CursorContext::create(*this, cursor) };
-		_enter_stack.push_back(ctx);
+	switch (item_type) {
+	case GainLineItem:
+	case EditorAutomationLineItem:
+	case ControlPointItem:
+		/* these do not affect the current entered track state */
+		clear_entered_track = false;
+		break;
+
+	case AutomationTrackItem:
+		/* handled above already */
+		break;
+
+	default:
+
+		break;
 	}
+
+	return ret;
 }
 
-void
-Editor::update_all_enter_cursors ()
+bool
+Editor::leave_handler (ArdourCanvas::Item* item, GdkEvent*, ItemType item_type)
 {
-	for (auto & ec : _enter_stack) {
-		ec.cursor_ctx->change(which_canvas_cursor (ec.item_type));
-	}
-}
+	EditorAutomationLine* al;
+	ArdourMarker *marker;
+	TempoMarker *t_marker;
+	MeterMarker *m_marker;
+	bool ret = true;
 
-double
-Editor::trackviews_height() const
-{
-	if (!_trackview_group) {
-		return 0;
+	if (!_enter_stack.empty()) {
+		_enter_stack.pop_back();
 	}
 
-	return _visible_canvas_height - _trackview_group->canvas_origin().y;
+	switch (item_type) {
+	case GridZoneItem:
+		break;
+
+	case ControlPointItem:
+		_verbose_cursor->hide ();
+		break;
+
+	case GainLineItem:
+	case EditorAutomationLineItem:
+		al = reinterpret_cast<EditorAutomationLine*> (item->get_data ("line"));
+		{
+			ArdourCanvas::Line *line = dynamic_cast<ArdourCanvas::Line *> (item);
+			if (line) {
+				line->set_outline_color (al->get_line_color());
+			}
+		}
+		break;
+
+	case MarkerItem:
+		if ((marker = static_cast<ArdourMarker *> (item->get_data ("marker"))) == 0) {
+			break;
+		}
+		entered_marker = 0;
+		marker->set_entered (false);
+		break;
+
+	case MeterMarkerItem:
+		if ((m_marker = static_cast<MeterMarker *> (item->get_data ("marker"))) == 0) {
+			break;
+		}
+		m_marker->set_color ("meter marker");
+		entered_marker = 0;
+		break;
+
+	case TempoMarkerItem:
+		if ((t_marker = static_cast<TempoMarker *> (item->get_data ("marker"))) == 0) {
+			break;
+		}
+		t_marker->set_color ("tempo marker");
+		entered_marker = 0;
+		break;
+
+	case FadeInTrimHandleItem:
+	case FadeOutTrimHandleItem:
+	case FadeInHandleItem:
+	case FadeOutHandleItem:
+	{
+		ArdourCanvas::Rectangle *rect = dynamic_cast<ArdourCanvas::Rectangle *> (item);
+		if (rect) {
+			rect->set_fill_color (UIConfiguration::instance().color ("inactive fade handle"));
+		}
+	}
+	break;
+
+	case AutomationTrackItem:
+		break;
+
+	case FeatureLineItem:
+	{
+		ArdourCanvas::Line *line = dynamic_cast<ArdourCanvas::Line *> (item);
+		line->set_outline_color (UIConfiguration::instance().color ("zero line"));
+	}
+	break;
+
+	default:
+		_region_peak_cursor->hide ();
+		break;
+	}
+
+	return ret;
 }

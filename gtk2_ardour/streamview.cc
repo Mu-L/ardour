@@ -95,8 +95,6 @@ StreamView::StreamView (RouteTimeAxisView& tv, ArdourCanvas::Container* canvas_g
 
 StreamView::~StreamView ()
 {
-	undisplay_track ();
-
 	delete canvas_rect;
 }
 
@@ -583,7 +581,7 @@ StreamView::set_selected_regionviews (RegionSelection& regions)
  *  @param result Filled in with selectable things.
  */
 void
-StreamView::get_selectables (timepos_t const & start, timepos_t const & end, double top, double bottom, list<Selectable*>& results, bool within)
+StreamView::_get_selectables (timepos_t const & start, timepos_t const & end, double top, double bottom, list<Selectable*>& results, bool within)
 {
 	layer_t min_layer = 0;
 	layer_t max_layer = 0;
@@ -623,7 +621,7 @@ StreamView::get_selectables (timepos_t const & start, timepos_t const & end, dou
 			if (_trackview.editor().internal_editing()) {
 				AudioRegionView* arv = dynamic_cast<AudioRegionView*> (*i);
 				if (arv && arv->fx_line ()) {
-					/* Note: AutomationLine::get_selectables() uses trackview.current_height (),
+					/* Note: EditorAutomationLine::get_selectables() uses trackview.current_height (),
 					 * disregarding Stacked layer display height
 					 */
 					double const c = height; // child_height (); // XXX

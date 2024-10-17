@@ -39,14 +39,15 @@
 #include "ardour/region_factory.h"
 #include "ardour/profile.h"
 #include "ardour/smf_source.h"
+#include "ardour/stripable.h"
 
 #include "actions.h"
 #include "ardour_ui.h"
 #include "editor.h"
 #include "gui_thread.h"
 #include "public_editor.h"
+#include "midi_cue_editor.h"
 #include "timers.h"
-
 #include "trigger_page.h"
 #include "trigger_strip.h"
 #include "triggerbox_ui.h"
@@ -134,6 +135,8 @@ TriggerPage::TriggerPage ()
 	_pane_upper.add (_strip_group_box);
 	_pane_upper.add (_sidebar_vbox);
 
+	_midi_editor = new MidiCueEditor;
+
 	/* Bottom -- Properties of selected Slot/Region */
 	Gtk::Table* table = manage (new Gtk::Table);
 	table->set_homogeneous (false);
@@ -142,22 +145,17 @@ TriggerPage::TriggerPage ()
 
 	int col = 0;
 	table->attach (_slot_prop_box, col, col + 1, 0, 1, Gtk::FILL, Gtk::SHRINK | Gtk::FILL);
-
-	col = 1;
+	++col;
 	table->attach (_audio_trig_box, col, col + 1, 0, 1, Gtk::FILL, Gtk::SHRINK | Gtk::FILL);
 	++col;
-
-#ifdef MIDI_PROPERTIES_BOX_IMPLEMENTED
-	col = 2;
-	table->attach (_midi_trig_box, col, col + 1, 0, 1, Gtk::FILL, Gtk::SHRINK);
+	table->attach (_midi_editor->toolbox(), col, col + 1, 0, 1, Gtk::EXPAND|Gtk::FILL, Gtk::EXPAND|Gtk::FILL);
 	++col;
-#endif
 
 	_parameter_box.pack_start (*table);
 
 	/* Top-level Layout */
-	_content.pack_start (_pane_upper, true, true);
-	_content.pack_start (_parameter_box, false, false);
+	_content.add (_pane_upper);
+	_content.add (_parameter_box);
 	_content.show ();
 
 	/* Show all */
@@ -226,6 +224,8 @@ TriggerPage::get_state () const
 	node->set_property (X_("triggerpage-hpane-pos"), _pane_upper.get_divider ());
 	node->set_property (X_("triggerpage-sidebar-page"), _sidebar_notebook.get_current_page ());
 
+	node->add_child_nocopy (_midi_editor->get_state());
+
 	return *node;
 }
 
@@ -236,6 +236,12 @@ TriggerPage::set_state (const XMLNode& node, int version)
 	if (node.get_property (X_("triggerpage-sidebar-page"), sidebar_page)) {
 		_sidebar_notebook.set_current_page (sidebar_page);
 	}
+
+	XMLNode* mn = node.child (X_("MIDICueEditor"));
+	if (mn) {
+		_midi_editor->set_state (*mn, version);
+	}
+
 	return Tabbable::set_state (node, version);
 }
 
@@ -274,6 +280,7 @@ TriggerPage::set_session (Session* s)
 	_session->config.ParameterChanged.connect (_session_connections, invalidator (*this), boost::bind (&TriggerPage::parameter_changed, this, _1), gui_context ());
 
 	Editor::instance ().get_selection ().TriggersChanged.connect (sigc::mem_fun (*this, &TriggerPage::selection_changed));
+	Trigger::TriggerArmChanged.connect (*this, invalidator (*this), boost::bind (&TriggerPage::rec_enable_changed, this, _1), gui_context());
 
 	initial_track_display ();
 
@@ -281,7 +288,7 @@ TriggerPage::set_session (Session* s)
 
 	_audio_trig_box.set_session (s);
 
-	_midi_trig_box.set_session (s);
+	_midi_editor->set_session (s);
 
 	update_title ();
 	start_updating ();
@@ -377,15 +384,66 @@ TriggerPage::clear_selected_slot ()
 }
 
 void
+TriggerPage::rec_enable_changed (Trigger const * trigger)
+{
+	/* hide everything */
+
+	_slot_prop_box.hide ();
+	_audio_trig_box.hide ();
+	_midi_trig_box.hide ();
+	_midi_editor->viewport().hide ();
+
+	_parameter_box.hide ();
+
+	TriggerBox& box = trigger->box();
+	TriggerReference ref (trigger->boxptr(), trigger->index());
+
+	_slot_prop_box.set_slot (ref);
+	_slot_prop_box.show ();
+
+	if (box.data_type () == DataType::AUDIO) {
+		if (trigger->the_region()) {
+			_audio_trig_box.set_trigger (ref);
+			_audio_trig_box.show ();
+		}
+	} else {
+		_midi_trig_box.set_trigger (ref);
+		_midi_trig_box.show ();
+
+		_midi_editor->set_box (trigger->boxptr());
+
+		Stripable* st = dynamic_cast<Stripable*> (box.owner());
+		assert (st);
+		std::shared_ptr<MidiTrack> mt = std::dynamic_pointer_cast<MidiTrack> (st->shared_from_this());
+		assert (mt);
+		_midi_editor->set_track (mt);
+
+		if (trigger->the_region()) {
+
+			std::shared_ptr<MidiRegion> mr = std::dynamic_pointer_cast<MidiRegion> (trigger->the_region());
+
+			if (mr) {
+				_midi_editor->set_region (mr);
+			}
+		}
+
+		_midi_editor->viewport().show ();
+	}
+
+	_parameter_box.show ();
+}
+
+void
 TriggerPage::selection_changed ()
 {
 	Selection& selection (Editor::instance ().get_selection ());
 
+	/* hide everything */
+
 	_slot_prop_box.hide ();
-
 	_audio_trig_box.hide ();
-
 	_midi_trig_box.hide ();
+	_midi_editor->viewport().hide ();
 
 	_parameter_box.hide ();
 
@@ -394,18 +452,36 @@ TriggerPage::selection_changed ()
 		TriggerEntry*    entry   = *ts.begin ();
 		TriggerReference ref     = entry->trigger_reference ();
 		TriggerPtr       trigger = entry->trigger ();
+		std::shared_ptr<TriggerBox> box = ref.box();
 
 		_slot_prop_box.set_slot (ref);
 		_slot_prop_box.show ();
-		if (trigger->region ()) {
-			if (trigger->region ()->data_type () == DataType::AUDIO) {
+
+		if (box->data_type () == DataType::AUDIO) {
+			if (trigger->the_region()) {
 				_audio_trig_box.set_trigger (ref);
 				_audio_trig_box.show ();
-			} else {
-				_midi_trig_box.set_trigger (ref);
-				_midi_trig_box.show ();
 			}
+		} else {
+			_midi_trig_box.set_trigger (ref);
+			_midi_trig_box.show ();
+
+			std::shared_ptr<MidiTrack> mt = std::dynamic_pointer_cast<MidiTrack> (entry->strip().stripable());
+			assert (mt);
+			_midi_editor->set_track (mt);
+
+			if (trigger->the_region()) {
+
+				std::shared_ptr<MidiRegion> mr = std::dynamic_pointer_cast<MidiRegion> (trigger->the_region());
+
+				if (mr) {
+					_midi_editor->set_region (mr);
+				}
+			}
+
+			_midi_editor->viewport().show ();
 		}
+
 		_parameter_box.show ();
 	}
 }

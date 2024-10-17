@@ -30,7 +30,7 @@
 #include "ardour/session.h"
 
 #include "audio_clock.h"
-#include "automation_line.h"
+#include "editor_automation_line.h"
 #include "control_point.h"
 #include "editor.h"
 #include "region_view.h"
@@ -313,7 +313,11 @@ TimeInfoBox::selection_changed ()
 
 	case Editing::MouseRange:
 		if (selection.time.empty()) {
-			Glib::RefPtr<ToggleAction> tact = ActionManager::get_toggle_action ("MouseMode", "set-mouse-mode-object-range");
+			/* XXX we really ought to be calling
+			   ::get_mouse_mode_action() here but there is no actual
+			   mouse emode enum for smart mode (object-range).
+			*/
+			Glib::RefPtr<ToggleAction> tact = ActionManager::get_toggle_action (PublicEditor::instance().editor_name(), "set-mouse-mode-object-range");
 
 			if (tact->get_active() &&  !selection.regions.empty()) {
 				/* show selected regions */

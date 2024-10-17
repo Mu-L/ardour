@@ -28,8 +28,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_types_h__
-#define __ardour_types_h__
+#pragma once
 
 #include <bitset>
 #include <cstdint>
@@ -75,6 +74,7 @@ class Route;
 class Region;
 class Playlist;
 class Stripable;
+class Trigger;
 class VCA;
 class AutomationControl;
 class SlavableAutomationControl;
@@ -984,6 +984,12 @@ enum SelectionOperation {
 	SelectionExtend /* UI only operation, not core */
 };
 
+enum RecordState {
+	Disabled = 0,
+	Enabled = 1,
+	Recording = 2
+};
+
 
 } // namespace ARDOUR
 
@@ -991,4 +997,3 @@ enum SelectionOperation {
 
 using ARDOUR::samplepos_t;
 
-#endif /* __ardour_types_h__ */

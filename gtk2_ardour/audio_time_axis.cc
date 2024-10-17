@@ -51,7 +51,7 @@
 #include "ardour/panner_shell.h"
 
 #include "audio_time_axis.h"
-#include "automation_line.h"
+#include "editor_automation_line.h"
 #include "enums.h"
 #include "gui_thread.h"
 #include "automation_time_axis.h"
@@ -148,6 +148,8 @@ AudioTimeAxisView::set_route (std::shared_ptr<Route> rt)
 
 AudioTimeAxisView::~AudioTimeAxisView ()
 {
+	delete _view;
+	_view = nullptr;
 }
 
 void

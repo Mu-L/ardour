@@ -342,9 +342,6 @@ RouteTimeAxisView::~RouteTimeAxisView ()
 
 	delete automation_action_menu;
 
-	delete _view;
-	_view = 0;
-
 	_automation_tracks.clear ();
 
 	delete route_group_menu;
@@ -1206,7 +1203,7 @@ RouteTimeAxisView::set_selected_regionviews (RegionSelection& regions)
  * @param results List to add things to.
  */
 void
-RouteTimeAxisView::get_selectables (timepos_t const & start, timepos_t const & end, double top, double bot, list<Selectable*>& results, bool within)
+RouteTimeAxisView::_get_selectables (timepos_t const & start, timepos_t const & end, double top, double bot, list<Selectable*>& results, bool within)
 {
 	if ((_view && ((top < 0.0 && bot < 0.0))) || touched (top, bot)) {
 		_view->get_selectables (start, end, top, bot, results, within);
@@ -1971,7 +1968,7 @@ RouteTimeAxisView::add_existing_processor_automation_curves (std::weak_ptr<Proce
 	for (set<Evoral::Parameter>::iterator i = existing.begin(); i != existing.end(); ++i) {
 
 		Evoral::Parameter param (*i);
-		std::shared_ptr<AutomationLine> al;
+		std::shared_ptr<EditorAutomationLine> al;
 
 		std::shared_ptr<AutomationControl> control = std::dynamic_pointer_cast<AutomationControl>(processor->control(*i, false));
 		if (!control || control->flags () & Controllable::HiddenControl) {
@@ -2230,7 +2227,7 @@ RouteTimeAxisView::processors_changed (RouteProcessorChange c)
 	}
 }
 
-std::shared_ptr<AutomationLine>
+std::shared_ptr<EditorAutomationLine>
 RouteTimeAxisView::find_processor_automation_curve (std::shared_ptr<Processor> processor, Evoral::Parameter what)
 {
 	ProcessorAutomationNode* pan;
@@ -2241,7 +2238,7 @@ RouteTimeAxisView::find_processor_automation_curve (std::shared_ptr<Processor> p
 		}
 	}
 
-	return std::shared_ptr<AutomationLine>();
+	return std::shared_ptr<EditorAutomationLine>();
 }
 
 void
@@ -2618,10 +2615,9 @@ RouteTimeAxisView::automation_child_by_alist_id (PBD::ID alist_id)
 			if (!atv) {
 				continue;
 			}
-			list<std::shared_ptr<AutomationLine> > lines = atv->lines();
-			for (list<std::shared_ptr<AutomationLine> >::const_iterator li = lines.begin(); li != lines.end(); ++li) {
-				if ((*li)->the_list()->id() == alist_id) {
-					return *li;
+			for (auto & line : atv->lines()) {
+				if (line->the_list()->id() == alist_id) {
+					return line;
 				}
 			}
 		}
