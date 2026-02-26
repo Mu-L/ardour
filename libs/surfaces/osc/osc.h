@@ -601,6 +601,18 @@ class OSC : public ARDOUR::ControlProtocol, public AbstractUI<OSCUIRequest>
 		return 0; \
 	}
 
+#define PATH_CALLBACK2_MSG_s_s(name,arg1type,arg2type) \
+	static int _ ## name (const char *path, const char *types, lo_arg **argv, int argc, lo_message msg, void *user_data) { \
+		return static_cast<OSC*>(user_data)->cb_ ## name (path, types, argv, argc, msg); \
+	} \
+	int cb_ ## name (const char *path, const char *types, lo_arg **argv, int argc, lo_message msg) { \
+		OSC_DEBUG; \
+		if (argc > 1) {	\
+			name (&argv[0]->arg1type, &argv[1]->arg2type, msg); \
+		} \
+		return 0; \
+	}
+
 #define PATH_CALLBACK3(name,arg1type,arg2type,arg3type) \
 	static int _ ## name (const char *path, const char *types, lo_arg **argv, int argc, lo_message msg, void *user_data) { \
 		return static_cast<OSC*>(user_data)->cb_ ## name (path, types, argv, argc, msg); \
