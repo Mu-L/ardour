@@ -23,10 +23,7 @@ def configure(conf):
 
 def build(bld):
     obj = bld.stlib(features = 'cxx cxxstlib', source = 'zita-convolver.cc')
-    if bld.env['build_target'] != 'msvc':
-        obj.cxxflags    = ['-fPIC', '-O3', '-ffast-math', '-funroll-loops']
-    else:
-        obj.cxxflags    = ['/O2', '/fp:fast']
+    obj.cxxflags        = bld.env['compiler_flags_dict']['dsp-optimization'] + [bld.env['compiler_flags_dict']['pic']]
     obj.export_includes = ['.']
     obj.includes        = ['.']
     obj.name            = 'zita-convolver'

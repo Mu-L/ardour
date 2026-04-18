@@ -43,6 +43,8 @@ compiler_flags_dictionaries= {
         'pipe' : '-pipe',
         # Flags for maximally optimized build
         'full-optimization' : [ '-O3', '-fomit-frame-pointer', '-ffast-math', '-fno-finite-math-only', '-fstrength-reduce' ],
+        # Flags for DSP code, debug and optimized build
+        'dsp-optimization' : [ '-O3', '-ffast-math' ],
         # Flag to ensure that compiler error output includes column/line numbers
         'show-column' : '-fshow-column',
         # Flags required to build for x86 only (OS X feature)
@@ -102,6 +104,7 @@ compiler_flags_dictionaries= {
         'xmmintrinsics' : '',
         'pipe' : '',
         'full-optimization' : ['/O2'],
+        'dsp-optimization' : ['/O2', '/fp:fast'],
         'no-frame-pointer' : '',
         'fast-math' : '',
         'strength-reduce' : '',
